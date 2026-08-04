@@ -2,8 +2,13 @@
  * Smart link router — выталкивает пользователя из in-app браузера наружу,
  * чтобы ссылка на App Store / атрибуционный линк дошли до цели.
  *
- * Вся логика клиентская: бэкенд не нужен, хостится на любой статике.
+ * Вся логика клиентская: бэкенда нет, хостится на любой статике.
  * Конфиг — window.LINK_DEFAULTS в index.html, переопределяется query-параметрами.
+ *
+ * ГЛАВНЫЙ ИНВАРИАНТ: страница никогда не должна оставаться белой.
+ * Кнопка нарисована в HTML и видима ДО выполнения скрипта; скрипт её только
+ * прячет (в обычном браузере) и подставляет адрес. Если скрипт не выполнится
+ * вовсе, пользователь всё равно увидит рабочую кнопку.
  */
 (function () {
   "use strict";
@@ -22,14 +27,21 @@
   var D = window.LINK_DEFAULTS || {};
   var DEBUG = q.has("debug");
 
-  function target(name) {
-    var v = q.get(name) || D[name] || null;
+  // Если цель пришла в query — конфиг по умолчанию игнорируем целиком.
+  // Иначе ?u= молча проигрывал бы дефолтному ios, и тест шёл бы не туда.
+  var fromQuery = q.has("ios") || q.has("android") || q.has("u");
+
+  function allowed(v) {
     if (!v) return null;
     for (var i = 0; i < ALLOW.length; i++) {
       if (ALLOW[i].test(v)) return v;
     }
     log("отброшено, хост не в allowlist: " + v);
     return null;
+  }
+
+  function target(name) {
+    return allowed(fromQuery ? q.get(name) : D[name]);
   }
 
   // ---- detect ----------------------------------------------------------
@@ -53,17 +65,11 @@
   // Facebook на свежих iOS больше не помечает свой WebView в User-Agent —
   // он неотличим от Safari по строке. Опознаём по среде: в настоящем Safari
   // navigator.standalone определён (false), внутри WKWebView приложения его нет.
-  // Сторонние браузеры исключаем по их собственным меткам.
   var isThirdPartyBrowser = /CriOS|FxiOS|EdgiOS|OPiOS|YaBrowser|DuckDuckGo/i.test(ua);
   var untaggedWebView = isIOS && !taggedInApp && !isThirdPartyBrowser &&
     typeof navigator.standalone === "undefined";
 
   var inApp = taggedInApp || untaggedWebView;
-
-  // Лента Facebook, TikTok и «замаскированный» WebView не пускают переход
-  // на кастомную схему без жеста: система показывает запрос подтверждения,
-  // а до него экран пустой. Показываем кнопку сразу — тап по ней и есть жест.
-  var needsGesture = isFacebook || isTikTok || untaggedWebView;
 
   // ---- routes ----------------------------------------------------------
 
@@ -84,37 +90,56 @@
 
   // ---- helpers ---------------------------------------------------------
 
-  // Страница скрыта или потеряла фокус — значит переход состоялся либо висит
-  // системный запрос «открыть приложение?». В обоих случаях дальше не дёргаем.
-  function gone() {
-    if (document.hidden || document.visibilityState === "hidden") return true;
-    try {
-      if (document.hasFocus && !document.hasFocus()) return true;
-    } catch (e) { /* нет поддержки — считаем, что мы всё ещё здесь */ }
-    return false;
-  }
-
-  function go(url) {
-    log("→ " + url);
+  // ПОЧЕМУ iframe, а не location.replace.
+  // В in-app браузере iOS переход на кастомную схему без пользовательского
+  // жеста блокируется, но документ при этом уже снят с рендера — экран остаётся
+  // белым, и отложенные таймеры вместе с кнопкой-фолбэком умирают.
+  // Навигация внутри скрытого iframe дёргает схему, не трогая основной документ:
+  // сработало — система уводит в приложение, не сработало — просто ничего,
+  // страница жива и кнопка на месте.
+  function tryHidden(url) {
+    log("↝ пробуем скрыто: " + url);
     if (DEBUG) return;
-    window.location.replace(url);
+    try {
+      var f = document.createElement("iframe");
+      f.style.display = "none";
+      f.src = url;
+      document.body.appendChild(f);
+      setTimeout(function () {
+        if (f.parentNode) f.parentNode.removeChild(f);
+      }, 1500);
+    } catch (e) {
+      log("iframe недоступен: " + e);
+    }
   }
 
-  var shown = false;
-  function showFallback(url, withTip) {
-    if (shown) return;
-    shown = true;
-    var link = document.getElementById("fallback-link");
-    if (link) link.href = url;
-    var box = document.getElementById("fallback");
-    if (box) box.className = "show";
-    if (withTip) {
-      var tip = document.getElementById("tip");
-      if (tip) tip.className = "show";
+  // Полноценный уход со страницы. Допустим только там, где он не оставит
+  // белого экрана: обычный браузер или ответ на реальный тап пользователя.
+  function go(url) {
+    log("→ уходим: " + url);
+    if (DEBUG) return;
+    window.location.href = url;
+  }
+
+  var fallbackBox = document.getElementById("fallback");
+  var fallbackLink = document.getElementById("fallback-link");
+
+  function armFallback(url, tipText) {
+    if (fallbackLink) {
+      fallbackLink.href = url;
+      fallbackLink.addEventListener("click", function () {
+        // Тап — это жест, здесь уход со страницы разрешён системой.
+        if (typeof window.onFallbackTap === "function") window.onFallbackTap();
+      });
     }
-    // Точка расширения под аналитику: тап по кнопке = автоматика не сработала.
-    // Без бэкенда сюда вешается GA/Plausible-событие.
-    if (typeof window.onFallbackShown === "function") window.onFallbackShown();
+    if (tipText) {
+      var tip = document.getElementById("tip");
+      if (tip) { tip.textContent = tipText; tip.className = "show"; }
+    }
+  }
+
+  function hideFallback() {
+    if (fallbackBox) fallbackBox.className = "hidden";
   }
 
   function log(msg) {
@@ -138,16 +163,14 @@
       ", безымянный WebView: " + untaggedWebView + ")");
     log("Instagram: " + isInstagram + "   Facebook: " + isFacebook +
       "   TikTok: " + isTikTok);
-    log("нужен жест: " + needsGesture);
     log("цель: " + dest);
     log("схема App Store: " + (dest ? appleScheme(dest) : null));
     log("");
-    log("маршрут, который был бы выполнен:");
   }
 
   if (!dest) {
-    log("цели нет — показываем заглушку");
-    showFallback("#", false);
+    log("цели нет");
+    armFallback("#", "Ссылка настроена неверно: цель не задана или её хост не разрешён.");
     return;
   }
 
@@ -155,64 +178,50 @@
   var scheme = appleScheme(dest);
 
   if (!inApp) {
-    // Обычный браузер — тут ничего изобретать не нужно.
+    // Обычный браузер: уходим сразу, кнопку прячем — она тут лишняя.
+    hideFallback();
     if (deep && (isIOS || isAndroid)) {
-      go(deep);
-      setTimeout(function () { if (!gone()) go(dest); }, 700);
+      tryHidden(deep);
+      setTimeout(function () { go(dest); }, 700);
       return;
     }
     go(dest);
     return;
   }
 
+  // --- in-app браузер ---
+  // Кнопка уже видима (она в HTML). Ниже — только скрытые попытки:
+  // сработает — уйдём сами, нет — пользователь нажмёт кнопку.
+
   if (isIOS) {
-    var delay = 0;
-    if (deep) {
-      go(deep);
-      delay = 700;
-    }
+    // По кнопке ведём туда, что переживает WebView лучше всего: схема стора,
+    // если цель — Apple; иначе сам адрес (в худшем случае откроется внутри,
+    // но это всё равно лучше белого экрана).
+    armFallback(scheme || dest, scheme
+      ? "Если появится запрос на открытие App Store — выберите «Открыть»"
+      : "Если ничего не произошло — нажмите кнопку выше");
+
+    if (deep) tryHidden(deep);
 
     setTimeout(function () {
-      if (gone()) return;
-      if (needsGesture) {
-        // Кнопку и подсказку рисуем ДО перехода: система спросит подтверждение,
-        // и человек должен понимать, что нажать. Попытка ровно одна —
-        // каждая следующая вызвала бы ещё один системный запрос.
-        showFallback(scheme || dest, true);
-        go(scheme || ("x-safari-" + dest));
-        return;
+      if (scheme) {
+        tryHidden(scheme);
+      } else if (isInstagram || isThreads) {
+        tryHidden("instagram://extbrowser/?url=" + encodeURIComponent(dest));
       }
-      if (isInstagram || isThreads) {
-        // Недокументированный маршрут Instagram во внешний браузер.
-        go("instagram://extbrowser/?url=" + encodeURIComponent(dest));
-      } else {
-        go("x-safari-" + dest);
-      }
-    }, delay);
-
-    // Второй заход — только там, где переход идёт без системного запроса.
-    setTimeout(function () {
-      if (gone() || needsGesture) return;
-      if (scheme) go(scheme);
-      else if (isInstagram || isThreads) go("x-safari-" + dest);
-    }, delay + 900);
-
-    setTimeout(function () {
-      if (!gone()) showFallback(scheme || dest, false);
-    }, delay + (needsGesture ? 7000 : 2200));
+    }, deep ? 700 : 0);
     return;
   }
 
   if (isAndroid) {
-    var wait = 0;
-    if (deep) {
-      go(deep);
-      wait = 700;
-    }
-    setTimeout(function () { if (!gone()) go(androidIntent(dest)); }, wait);
-    setTimeout(function () { if (!gone()) showFallback(dest, false); }, wait + 1500);
+    armFallback(dest, "Если ничего не произошло — нажмите кнопку выше");
+    if (deep) tryHidden(deep);
+    // Android WebView исторически пропускает intent:// и корректно
+    // отрабатывает browser_fallback_url. НЕ ПРОВЕРЕНО на устройстве.
+    setTimeout(function () { tryHidden(androidIntent(dest)); }, deep ? 700 : 0);
     return;
   }
 
+  hideFallback();
   go(dest);
 })();
