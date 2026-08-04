@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Проба схем</title>
+<style>
+body{margin:0;padding:20px;background:#fff;color:#1d1d1f;
+font:16px/1.45 -apple-system,BlinkMacSystemFont,system-ui,sans-serif}
+h1{font-size:19px;margin:0 0 4px}
+p.sub{margin:0 0 18px;color:#86868b;font-size:14px}
+button{display:block;width:100%;margin:0 0 10px;padding:16px;border:0;
+border-radius:12px;background:#0071e3;color:#fff;font-size:16px;font-weight:500;
+text-align:left;-webkit-appearance:none}
+button b{display:block;font-size:13px;font-weight:400;opacity:.75;margin-top:3px;
+word-break:break-all}
+pre{font:11.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;
+word-break:break-all;background:#f5f5f7;padding:14px;border-radius:12px;margin:0 0 18px}
+#alive{background:#e8f5e9;color:#1b5e20;padding:12px;border-radius:12px;
+margin:0 0 18px;font-size:14px}
+</style>
+</head>
+<body>
+
+<h1>Проба схем</h1>
+<p class="sub">Ничего не делается автоматически. Жми кнопки по очереди и запоминай, какая сработала.</p>
+
+<!-- Рисуется сразу в HTML: если JS не выполнится, экран всё равно НЕ белый -->
+<div id="alive">JS ещё не выполнился. Если этот текст остался серым/этим — скрипт не отработал.</div>
+
+<pre id="info">—</pre>
+
+<button data-k="extbrowser">1 — instagram://extbrowser<b></b></button>
+<button data-k="xsafari">2 — x-safari-https://<b></b></button>
+<button data-k="itms">3 — itms-appss:// (App Store)<b></b></button>
+<button data-k="plain">4 — обычный https<b></b></button>
+
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var dest = q.get("u") || "https://apps.apple.com/app/id6457366208";
+
+  var ua = navigator.userAgent || "";
+  var box = document.getElementById("alive");
+  box.style.background = "#e8f5e9";
+  box.textContent = "JS работает. Страница жива, таймеров нет.";
+
+  var isIOS = /iPhone|iPad|iPod/i.test(ua);
+  var flags = [
+    "UA: " + ua, "",
+    "iOS: " + isIOS,
+    "Instagram в UA: " + /Instagram/i.test(ua),
+    "FB в UA: " + /FBAN|FBAV|FB_IAB/i.test(ua),
+    "navigator.standalone: " + (typeof navigator.standalone === "undefined"
+      ? "НЕТ (признак WebView внутри приложения)"
+      : String(navigator.standalone) + " (признак настоящего Safari)"),
+    "", "цель: " + dest
+  ].join("\n");
+  document.getElementById("info").textContent = flags;
+
+  var urls = {
+    extbrowser: "instagram://extbrowser/?url=" + encodeURIComponent(dest),
+    xsafari: "x-safari-" + dest,
+    itms: dest.replace(/^https?:\/\//, "itms-appss://"),
+    plain: dest
+  };
+
+  var btns = document.querySelectorAll("button");
+  for (var i = 0; i < btns.length; i++) {
+    (function (b) {
+      var k = b.getAttribute("data-k");
+      b.querySelector("b").textContent = urls[k];
+      b.addEventListener("click", function () {
+        box.textContent = "Пробуем: " + k + ". Если остался этот экран — не сработало.";
+        // Тап = пользовательский жест, поэтому переход разрешён системой.
+        window.location.href = urls[k];
+      });
+    })(btns[i]);
+  }
+})();
+</script>
+</body>
+</html>
