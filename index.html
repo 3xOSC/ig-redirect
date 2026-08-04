@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Открываем приложение…</title>
+<style>
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:#fff;
+color:#1d1d1f;text-align:center;padding:24px;
+font:17px/1.45 -apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,sans-serif;
+-webkit-font-smoothing:antialiased}
+#fallback,#debug{display:none}
+#fallback.show,#debug.show{display:block}
+.name{font-size:22px;letter-spacing:-.02em}
+.hint{margin-top:8px;color:#86868b;font-size:15px}
+#tip{display:none;margin-top:20px;color:#86868b;font-size:13.5px;
+line-height:1.4;max-width:300px}
+#tip.show{display:block}
+#tip b{color:#1d1d1f}
+a{display:inline-block;margin-top:22px;padding:15px 32px;border-radius:980px;
+background:#0071e3;color:#fff;text-decoration:none;font-size:17px;font-weight:500}
+#debug{max-width:100%;text-align:left}
+#debug-log{font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+white-space:pre-wrap;word-break:break-all;background:#f5f5f7;
+padding:16px;border-radius:12px;margin:0}
+</style>
+</head>
+<body>
+
+<div id="fallback">
+  <div class="name">Colette</div>
+  <div class="hint">Нажмите, чтобы продолжить</div>
+  <a id="fallback-link" href="#">Открыть</a>
+  <div id="tip">Если появится запрос на открытие App&nbsp;Store — выберите <b>Открыть</b></div>
+</div>
+
+<div id="debug"><pre id="debug-log"></pre></div>
+
+<script>
+// Куда ведём по умолчанию. Переопределяется query-параметрами:
+//   ?ios=<url>&android=<url>   — платформенные цели
+//   ?u=<url>                   — одна цель на всё
+//   ?debug=1                   — не редиректить, показать вычисленный маршрут
+// Хост цели обязан быть в allowlist внутри router.js.
+window.LINK_DEFAULTS = {
+  ios: "https://app.appsflyer.com/id6457366208",
+  android: "https://app.appsflyer.com/id6457366208",
+  deep: null   // кастомная схема приложения, если оно уже установлено
+};
+</script>
+<script src="router.js"></script>
+</body>
+</html>
