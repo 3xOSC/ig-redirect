@@ -98,6 +98,7 @@
   // сработало — система уводит в приложение, не сработало — просто ничего,
   // страница жива и кнопка на месте.
   function tryHidden(url) {
+    if (!url) return;
     log("↝ пробуем скрыто: " + url);
     if (DEBUG) return;
     try {
@@ -194,22 +195,30 @@
   // сработает — уйдём сами, нет — пользователь нажмёт кнопку.
 
   if (isIOS) {
-    // По кнопке ведём туда, что переживает WebView лучше всего: схема стора,
-    // если цель — Apple; иначе сам адрес (в худшем случае откроется внутри,
-    // но это всё равно лучше белого экрана).
-    armFallback(scheme || dest, scheme
-      ? "Если появится запрос на открытие App Store — выберите «Открыть»"
-      : "Если ничего не произошло — нажмите кнопку выше");
+    // ПРОВЕРЕНО НА УСТРОЙСТВЕ (iPhone 17, iOS 26.5.2, Instagram 440, IABMV/1):
+    // из четырёх маршрутов наружу уводит ТОЛЬКО instagram://extbrowser.
+    // itms-appss:// (её отдаёт сам apps.apple.com в 301) и обычный https
+    // из этого WebView не срабатывают, x-safari- перехватывается.
+    // Поэтому для Instagram/Threads extbrowser идёт первым ДАЖЕ когда цель —
+    // карточка App Store: схема стора там проиграла в прямом сравнении.
+    var ext = (isInstagram || isThreads)
+      ? "instagram://extbrowser/?url=" + encodeURIComponent(dest)
+      : null;
+
+    // Кнопка ведёт туда, что подтверждено тапом на живом устройстве.
+    armFallback(ext || scheme || dest,
+      "Если ничего не произошло — нажмите кнопку выше");
 
     if (deep) tryHidden(deep);
 
-    setTimeout(function () {
-      if (scheme) {
-        tryHidden(scheme);
-      } else if (isInstagram || isThreads) {
-        tryHidden("instagram://extbrowser/?url=" + encodeURIComponent(dest));
-      }
-    }, deep ? 700 : 0);
+    var t0 = deep ? 700 : 0;
+    setTimeout(function () { tryHidden(ext || scheme || null); }, t0);
+
+    // Если extbrowser не сработал, а цель — карточка стора, пробуем её схему
+    // вторым заходом: хуже не станет, документ от скрытой попытки не страдает.
+    if (ext && scheme) {
+      setTimeout(function () { tryHidden(scheme); }, t0 + 800);
+    }
     return;
   }
 

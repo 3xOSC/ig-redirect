@@ -47,16 +47,35 @@ Google Play). Иначе — открытый редиректор, через �
 
 | Среда | Что делаем |
 |---|---|
-| iOS, цель = `apps.apple.com` | скрытая попытка `itms-appss://apps.apple.com/...` — открывает App Store напрямую |
-| iOS, Instagram/Threads, цель ≠ Apple | скрытая попытка `instagram://extbrowser/?url=...` |
-| iOS, лента Facebook / TikTok, цель ≠ Apple | только кнопка: рабочей автосхемы для этого случая не подтверждено |
-| Android, in-app | скрытая попытка `intent://...package=com.android.chrome;S.browser_fallback_url=...;end` |
+| iOS, Instagram / Threads | `instagram://extbrowser/?url=...` — **единственное, что реально уводит наружу** |
+| iOS, Instagram, цель = App Store | сначала всё равно `extbrowser`, вторым заходом `itms-appss://` |
+| iOS, лента Facebook / TikTok, цель = App Store | `itms-appss://apps.apple.com/...` (на устройстве не проверено) |
+| iOS, лента Facebook / TikTok, цель ≠ Apple | только кнопка: рабочей автосхемы не подтверждено |
+| Android, in-app | `intent://...package=com.android.chrome;S.browser_fallback_url=...;end` (не проверено) |
 | Обычный браузер | `location.href = dest`, кнопка прячется |
 
 **Кнопка в in-app браузере видима всегда, с первого кадра.** Автопопытка идёт
 скрытым iframe поверх неё — сработает, уведёт наружу; не сработает, останется кнопка.
 
-`x-safari-https://` убран: Instagram его перехватывает и блокирует.
+### Что измерено на живом устройстве
+
+iPhone 17, iOS 26.5.2, Instagram 440.0.0.30.81 (`IABMV/1`), ссылка в Direct.
+Пробы через `probe.html`, каждая по тапу пользователя:
+
+| Схема | Результат |
+|---|---|
+| `instagram://extbrowser/?url=...` | ✅ уводит наружу — **единственная рабочая** |
+| `x-safari-https://...` | ❌ перехватывается Instagram |
+| `itms-appss://apps.apple.com/...` | ❌ не срабатывает из этого WebView |
+| обычный `https://apps.apple.com/...` | ❌ открывается внутриin-app браузера |
+
+Важно: `itms-appss://` — **не опечатка и не устаревший вариант**. Именно эту схему
+отдаёт сам `apps.apple.com` в заголовке `301 Location`. Она проиграла здесь
+из-за политики Instagram, а не из-за неверного написания.
+
+Отсюда неочевидное следствие: **распространённый совет «веди прямо на apps.apple.com,
+и схема стора спасёт» в Instagram не работает.** Прямая ссылка на стор не даёт
+преимущества перед атрибуционной — обе одинаково зависят от `extbrowser`.
 
 ## Инвариант: никакого белого листа
 

@@ -47,9 +47,27 @@ padding:16px;border-radius:12px;margin:0}
 //   ?debug=1                   — ничего не открывать, показать вычисленный маршрут
 // Хост цели обязан быть в allowlist внутри router.js.
 // Любой параметр цели в query отменяет эти дефолты целиком.
+//
+// ⚠️ Цель задавать ЗДЕСЬ, а не через ?u=. Ссылка с параметрами, переданная
+// в ?u= без URL-кодирования, теряет всё после первого & — второй и дальше
+// параметры распарсятся как параметры ЭТОЙ страницы, а не цели.
+//
+// {{...}} — макросы Meta, подставляются на их стороне до клика.
+var AF = "https://app.appsflyer.com/id6457366208" +
+  "?pid=metaweb_int" +
+  "&c={{campaign.name}}" +
+  "&af_siteid={{placement}}" +
+  "&af_ad={{ad.name}}" +
+  "&af_adset={{adset.name}}" +
+  "&af_c_id={{campaign.id}}" +
+  "&af_adset_id={{adset.id}}" +
+  "&af_ad_id={{ad.id}}" +
+  "&af_click_lookback=7d" +
+  "&af_ios_store_cpp=1131d9d4-ab41-446e-88cb-06bf9d656624";
+
 window.LINK_DEFAULTS = {
-  ios: "https://app.appsflyer.com/id6457366208",
-  android: "https://app.appsflyer.com/id6457366208",
+  ios: AF,
+  android: AF,
   deep: null   // кастомная схема приложения, если оно уже установлено
 };
 </script>

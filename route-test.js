@@ -143,5 +143,60 @@ check("в router.js нет обращения к hasFocus", !/hasFocus/.test(SRC
     `попыток стало ${r.hidden.length}`);
 }
 
+// ---------------------------------------------------------------------------
+// D. Сохранность параметров атрибуции сквозь маршрут.
+// Цель заворачивается в instagram://extbrowser/?url=<encodeURIComponent(dest)>;
+// проверяем, что обратное декодирование даёт исходную строку без потерь.
+// ---------------------------------------------------------------------------
+console.log("\n=== D. Параметры атрибуции доезжают без потерь ===\n");
+
+const AF = "https://app.appsflyer.com/id6457366208" +
+  "?pid=metaweb_int&c={{campaign.name}}&af_siteid={{placement}}" +
+  "&af_ad={{ad.name}}&af_adset={{adset.name}}&af_c_id={{campaign.id}}" +
+  "&af_adset_id={{adset.id}}&af_ad_id={{ad.id}}&af_click_lookback=7d" +
+  "&af_ios_store_cpp=1131d9d4-ab41-446e-88cb-06bf9d656624";
+
+const EXPECTED_KEYS = ["pid", "c", "af_siteid", "af_ad", "af_adset", "af_c_id",
+  "af_adset_id", "af_ad_id", "af_click_lookback", "af_ios_store_cpp"];
+
+{
+  const cfg = { ios: AF, android: AF, deep: null };
+  const r = run(SRC, UAS["Instagram iOS 26 (реальный)"], "", cfg, {});
+  const wrapped = r.hidden[0] || "";
+
+  check("цель прошла allowlist и попытка сделана", r.hidden.length === 1);
+
+  // Разворачиваем ровно так, как это сделает Instagram.
+  const inner = decodeURIComponent(wrapped.replace(/^instagram:\/\/extbrowser\/\?url=/, ""));
+  check("после разворачивания URL совпадает с исходным побайтно", inner === AF);
+
+  const qs = new URLSearchParams(inner.slice(inner.indexOf("?") + 1));
+  const missing = EXPECTED_KEYS.filter(k => !qs.has(k));
+  check(`все ${EXPECTED_KEYS.length} параметров на месте`, missing.length === 0,
+    missing.length ? "потеряны: " + missing.join(", ") : "");
+  check("значение pid не искажено", qs.get("pid") === "metaweb_int");
+  check("макрос Meta уцелел как есть", qs.get("c") === "{{campaign.name}}",
+    "получено: " + qs.get("c"));
+  check("CPP-идентификатор уцелел",
+    qs.get("af_ios_store_cpp") === "1131d9d4-ab41-446e-88cb-06bf9d656624");
+}
+
+// Ловушка, из-за которой параметры теряются на ровном месте.
+console.log("\n   Негативный контроль — почему цель нельзя класть в ?u= сырой:");
+{
+  const raw = run(SRC, UAS["Instagram iOS 26 (реальный)"], "?u=" + AF, {}, {});
+  const rawInner = decodeURIComponent((raw.hidden[0] || "")
+    .replace(/^instagram:\/\/extbrowser\/\?url=/, ""));
+  const lost = EXPECTED_KEYS.filter(k => !rawInner.includes(k + "="));
+  check("сырой ?u= ДОЛЖЕН терять параметры (иначе контроль бесполезен)",
+    lost.length > 0, "потеряно " + lost.length + " из " + EXPECTED_KEYS.length);
+
+  const enc = run(SRC, UAS["Instagram iOS 26 (реальный)"],
+    "?u=" + encodeURIComponent(AF), {}, {});
+  const encInner = decodeURIComponent((enc.hidden[0] || "")
+    .replace(/^instagram:\/\/extbrowser\/\?url=/, ""));
+  check("закодированный ?u= доносит цель целиком", encInner === AF);
+}
+
 console.log(failed ? "\nРЕЗУЛЬТАТ: ПРОВАЛ\n" : "\nРЕЗУЛЬТАТ: всё зелёное\n");
 process.exit(failed ? 1 : 0);
